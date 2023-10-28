@@ -47,6 +47,7 @@ MutexAcquire(
     oldState = CpuIntrDisable();
 
     LockAcquire(&Mutex->MutexLock, &dummyState );
+
     if (NULL == Mutex->Holder)
     {
         Mutex->Holder = pCurrentThread;
@@ -55,7 +56,7 @@ MutexAcquire(
 
     while (Mutex->Holder != pCurrentThread)
     {
-        InsertTailList(&Mutex->WaitingList, &pCurrentThread->ReadyList);
+        InsertOrderedList(&Mutex->WaitingList, &pCurrentThread->ReadyList, ThreadComparePriorityReadyList, NULL);
         ThreadTakeBlockLock();
         LockRelease(&Mutex->MutexLock, dummyState);
         ThreadBlock();

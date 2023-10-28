@@ -1,6 +1,7 @@
 #include "common_lib.h"
 #include "list.h"
 
+
 //  Valid list state:
 //  |---------| Flink |---------| Flink |---------|
 //  |         |------>|         |------>|         |
@@ -158,6 +159,7 @@ InsertOrderedList(
     )
 {
     PLIST_ENTRY pCurrentEntry;
+    BOOLEAN wasInserted = FALSE;
 
 #ifdef DEBUG
     ASSERT(_ValidateListEntry(ListHead));
@@ -170,12 +172,20 @@ InsertOrderedList(
     {
         if (CompareFunction(Entry, pCurrentEntry, Context) < 0)
         {
-            // entry to insert is smaller than current entry
+            // insert Entry before pCurrentEntry since it has higher priority
+            Entry->Flink = pCurrentEntry;
+            Entry->Blink = pCurrentEntry->Blink;
+            pCurrentEntry->Blink->Flink = Entry;
+            pCurrentEntry->Blink = Entry;
+            wasInserted = TRUE;
             break;
         }
     }
 
-    InsertTailList(pCurrentEntry, Entry);
+    if (!wasInserted)
+    {
+        InsertTailList(pCurrentEntry, Entry);
+    }
 }
 
 PTR_SUCCESS

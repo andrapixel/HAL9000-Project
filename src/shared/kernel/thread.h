@@ -27,6 +27,13 @@ ThreadCreate(
     OUT_PTR     PTHREAD*            Thread
     );
 
+INT64
+ThreadComparePriorityReadyList(
+    IN PLIST_ENTRY e1,
+    IN PLIST_ENTRY e2,
+    IN_OPT PVOID Context
+    );
+
 //******************************************************************************
 // Function:     ThreadYield
 // Description:  Yields the CPU to the scheduler, which picks a new thread to

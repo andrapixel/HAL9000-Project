@@ -712,7 +712,6 @@ ThreadSetPriority(
     IN      THREAD_PRIORITY     NewPriority
     )
 {
-    //INTR_STATE oldState;
     ASSERT(ThreadPriorityLowest <= NewPriority && NewPriority <= ThreadPriorityMaximum);
 
     PTHREAD pCurrentThread = GetCurrentThread();

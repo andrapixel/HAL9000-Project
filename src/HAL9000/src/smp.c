@@ -387,7 +387,6 @@ SmpSendGenericIpi(
                                FreeContext,
                                WaitForHandling,
                                SmpIpiSendToAllIncludingSelf,
-                               //SmpIpiSendToAllExcludingSelf,
                                dest
                                );
 }

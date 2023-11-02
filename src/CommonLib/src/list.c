@@ -182,6 +182,7 @@ InsertOrderedList(
         }
     }
 
+    // if the Entry has a lower priority insert it at the tail of the list
     if (!wasInserted)
     {
         InsertTailList(pCurrentEntry, Entry);

@@ -585,7 +585,7 @@ ThreadUnblock(
 
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
      
-    THREAD_PRIORITY newPrio = ThreadGetPriority(Thread);
+    /*THREAD_PRIORITY newPrio = ThreadGetPriority(Thread);
     THREAD_PRIORITY minPrio = m_threadSystemData.RunningThreadsMinPriority;
 
     if (newPrio > minPrio) {
@@ -594,7 +594,10 @@ ThreadUnblock(
     }
     else {
         InsertOrderedList(&m_threadSystemData.ReadyThreadsList, &Thread->ReadyList, ThreadComparePriorityReadyList, NULL);
-    }
+    }*/
+
+    SmpSendGenericIpi(ThreadYieldForIpi, NULL, NULL, NULL, FALSE);
+    InsertOrderedList(&m_threadSystemData.ReadyThreadsList, &Thread->ReadyList, ThreadComparePriorityReadyList, NULL);
 
     Thread->State = ThreadStateReady;
     LockRelease(&m_threadSystemData.ReadyThreadsLock, dummyState );
@@ -720,12 +723,12 @@ ThreadSetPriority(
     IN      THREAD_PRIORITY     NewPriority
     )
 {
-    INTR_STATE oldState;
+    //INTR_STATE oldState;
     ASSERT(ThreadPriorityLowest <= NewPriority && NewPriority <= ThreadPriorityMaximum);
 
     PTHREAD pCurrentThread = GetCurrentThread();
 
-    if (pCurrentThread->Priority > NewPriority) {
+    /*if (NewPriority < pCurrentThread->Priority) {
         LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
 
         if (NewPriority < m_threadSystemData.RunningThreadsMinPriority) {
@@ -735,6 +738,10 @@ ThreadSetPriority(
         else {
             LockRelease(&m_threadSystemData.ReadyThreadsLock, oldState);
         }
+    }*/
+
+    if (NewPriority < pCurrentThread->Priority) {
+        ThreadYield();
     }
 
     pCurrentThread->Priority = NewPriority;

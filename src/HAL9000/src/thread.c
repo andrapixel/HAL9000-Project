@@ -950,9 +950,72 @@ _ThreadSetupMainThreadUserStack(
     ASSERT(ResultingStack != NULL);
     ASSERT(Process != NULL);
 
-    *ResultingStack = (PVOID)PtrDiff(InitialStack, SHADOW_STACK_SIZE + sizeof(PVOID));
+    //*ResultingStack = (PVOID)PtrDiff(InitialStack, SHADOW_STACK_SIZE + sizeof(PVOID));
+    STATUS status;
+    PVOID kernelStack = NULL;
 
-    return STATUS_SUCCESS;
+    __try
+    {
+        status = MmuGetSystemVirtualAddressForUserBuffer((PVOID)PtrDiff(InitialStack,STACK_DEFAULT_SIZE), STACK_DEFAULT_SIZE, PAGE_RIGHTS_READWRITE, Process, &kernelStack);
+
+        if (!SUCCEEDED(status))
+        {
+            __leave;
+        }
+        char* stack_ptr = (char*)kernelStack;
+       // LOG("HERE IS OKEY");
+        int index = Process->NumberOfArguments - 1;
+        char* currentArg = Process->FullCommandLine;
+        char* nextArg = NULL;
+        char** argv = (char**)stack_ptr;
+        stack_ptr += sizeof(char*) * (Process->NumberOfArguments + 1);
+
+        while (currentArg != NULL && index >= 0)
+        {
+            for (nextArg = currentArg; *nextArg != '\0'; nextArg++)
+            {
+                if (*nextArg == ' ')
+                {
+                    *nextArg = '\0';
+                    nextArg++;
+                    break;
+                }
+            }
+            memcpy(stack_ptr, currentArg, strlen(currentArg) + 1);
+            argv[index] = stack_ptr;
+            stack_ptr += strlen(currentArg) + 1;
+
+            currentArg = nextArg;
+            index--;
+        }
+       
+        LOG("After pushing arguments %p\n", *stack_ptr);
+        (unsigned int)stack_ptr = 0xDEADBEEF;
+        stack_ptr += sizeof(unsigned int);
+        (unsigned int)stack_ptr = 0xDEADBEEF;
+        stack_ptr += sizeof(unsigned int);
+
+        memcpy(stack_ptr, &argv, sizeof(char**));
+        stack_ptr += sizeof(char**);
+
+        (int)stack_ptr = Process->NumberOfArguments;
+        stack_ptr += sizeof(int);
+
+        (unsigned int)stack_ptr = 0xDEADC0DE;
+        stack_ptr += sizeof(unsigned int);
+
+        *ResultingStack = stack_ptr;
+    }
+    __finally
+    {
+        if (kernelStack != NULL)
+        {
+            MmuFreeSystemVirtualAddressForUserBuffer(kernelStack);
+        }
+     
+    }
+
+    return status;
 }
 
 REQUIRES_EXCL_LOCK(m_threadSystemData.ReadyThreadsLock)

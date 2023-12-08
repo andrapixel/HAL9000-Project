@@ -17,6 +17,7 @@ extern void SyscallEntry();
 #define SYSCALL_IF_VERSION_KM       SYSCALL_IMPLEMENTED_IF_VERSION
 #define MAX_PROCESSES 100
 #define MAX_FILES 100
+#define MAX_THREADS                  100
 
 // Process handle structure
 typedef struct _PROCESS_HANDLE {
@@ -54,6 +55,24 @@ PFILE_OBJECT RetrieveFileFromHandle(UM_HANDLE FileHandle)
         if (fileHandleTable[FileHandle].filePtr != NULL) {
             return fileHandleTable[FileHandle].filePtr;
         }
+    }
+    else {
+        return NULL;
+    }
+}
+
+//the thread handle structure
+typedef struct _THREAD_HANDLE {
+    PTHREAD threadPtr;
+} THREAD_HANDLE, * PTHREAD_HANDLE;
+
+//the array
+THREAD_HANDLE threadHandleTable[MAX_THREADS];
+
+//function to retrieve the thread from the handle
+PTHREAD RetrieveThreadFromHandle(UM_HANDLE ThreadHandle) {
+    if (ThreadHandle >= 0 && ThreadHandle < MAX_THREADS) {
+        return threadHandleTable[ThreadHandle].threadPtr;
     }
     else {
         return NULL;
@@ -116,7 +135,7 @@ SyscallHandler(
             status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
             break;
         // STUDENT TODO: implement the rest of the syscalls
-            // Process syscalls
+        // Process syscalls
         case SyscallIdProcessExit:
             status = SyscallProcessExit((STATUS)*pSyscallParameters);
             break;
@@ -144,7 +163,7 @@ SyscallHandler(
         case SyscallIdProcessCloseHandle:
             status = SyscallProcessCloseHandle((UM_HANDLE)*pSyscallParameters);
             break;
-            // File syscalls
+        // File syscalls
         case SyscallIdFileCreate:
             status = SyscallFileCreate(
                 (char*)pSyscallParameters[0],
@@ -171,6 +190,48 @@ SyscallHandler(
                 (PVOID)pSyscallParameters[1],
                 (QWORD)pSyscallParameters[2],
                 (QWORD*)pSyscallParameters[3]
+            );
+            break;
+        // Thread syscalls
+        //-------------------------THREAD EXIT
+        case SyscallIdThreadExit:
+            status = SyscallThreadExit((STATUS)*pSyscallParameters);
+            break;
+        //-------------------------THREAD CREATE
+        //PFUNC_ThreadStart       StartFunction,
+        //PVOID                   Context,
+        //UM_HANDLE* ThreadHandle
+        case SyscallIdThreadCreate:
+            status = SyscallThreadCreate(
+                (PFUNC_ThreadStart)pSyscallParameters[0],
+                (PVOID)pSyscallParameters[1],
+                (UM_HANDLE*)pSyscallParameters[2]
+            );
+            break;
+        //-------------------------THREAD GET ID
+        //IN_OPT  UM_HANDLE               ThreadHandle,
+        //OUT     TID* ThreadId
+        case SyscallIdThreadGetTid:
+            status = SyscallThreadGetTid(
+                (UM_HANDLE)pSyscallParameters[0],
+                (TID*)pSyscallParameters[1]
+            );
+            break;
+        //-------------------------THREAD WAIT FOR TERMINATION
+        // IN      UM_HANDLE               ThreadHandle,
+        //OUT     STATUS* TerminationStatus
+        case SyscallIdThreadWaitForTermination:
+            status = SyscallThreadWaitForTermination(
+                (UM_HANDLE)pSyscallParameters[0],
+                (STATUS*)pSyscallParameters[1]
+            );
+            break;
+
+        ////------------------------THREAD CLOSE HANDLE
+        ////    IN      UM_HANDLE               ThreadHandle
+        case SyscallIdThreadCloseHandle:
+            status = SyscallThreadCloseHandle(
+                (UM_HANDLE)pSyscallParameters[0]
             );
             break;
         default:
@@ -599,6 +660,162 @@ SyscallFileWrite(
     if (!SUCCEEDED(status)) {
         return STATUS_UNSUCCESSFUL;
     }
+
+    return STATUS_SUCCESS;
+}
+
+// Thread syscalls
+//Thread Exit
+STATUS
+SyscallThreadExit(
+    IN  STATUS                      ExitStatus
+)
+{
+    // Retrieve the current thread handle
+    PTHREAD currentThread = GetCurrentThread();
+    UM_HANDLE currentThreadHandle = 12345ULL; // Initialize to an invalid handle
+
+    // Find the handle associated with the current thread
+    int handleIndex;
+    for (handleIndex = 0; handleIndex < MAX_THREADS; handleIndex++) {
+        if (threadHandleTable[handleIndex].threadPtr == currentThread) {
+            currentThreadHandle = handleIndex;
+            break;
+        }
+    }
+
+    // Free handle slot in the handle table for the exiting thread
+    if (currentThreadHandle != -1) {
+        threadHandleTable[currentThreadHandle].threadPtr = NULL;
+    }
+    ThreadExit(ExitStatus);
+    return STATUS_SUCCESS;
+}
+
+//Thread get id
+STATUS
+SyscallThreadGetTid(
+    IN_OPT  UM_HANDLE               ThreadHandle,
+    OUT     TID* ThreadId
+)
+{
+
+    PPROCESS process = GetCurrentProcess();
+    if (process == NULL)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+    if (!SUCCEEDED(MmuIsBufferValid(ThreadId, sizeof(TID), PAGE_RIGHTS_WRITE, process)))
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    PTHREAD thread = RetrieveThreadFromHandle(ThreadHandle);
+
+    if (thread == NULL) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    TID tid = ThreadGetId(thread);
+    *ThreadId = tid;
+
+    return STATUS_SUCCESS;
+}
+
+//Thread create
+STATUS
+SyscallThreadCreate(
+    IN      PFUNC_ThreadStart       StartFunction,
+    IN_OPT  PVOID                   Context,
+    OUT     UM_HANDLE* ThreadHandle
+)
+{
+    PPROCESS process = GetCurrentProcess();
+    if (process == NULL)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+    if (!SUCCEEDED(MmuIsBufferValid((PVOID)StartFunction, sizeof(QWORD), PAGE_RIGHTS_EXECUTE, process)))
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+    if (!SUCCEEDED(MmuIsBufferValid(ThreadHandle, sizeof(UM_HANDLE), PAGE_RIGHTS_WRITE, process)))
+    {
+        return STATUS_INVALID_PARAMETER3;
+    }
+    //treat the case of invalid parameters
+
+
+    STATUS status;
+    PTHREAD newThread = NULL;
+    char* threadName = "NewThread";
+
+    status = ThreadCreate(threadName, 1, StartFunction, Context, &newThread);
+
+    if (SUCCEEDED(status) && newThread != NULL) {
+        int handleIndex;
+        for (handleIndex = 0; handleIndex < MAX_THREADS; handleIndex++) {
+            if (threadHandleTable[handleIndex].threadPtr == NULL) {
+                threadHandleTable[handleIndex].threadPtr = newThread;
+                *ThreadHandle = (UM_HANDLE)handleIndex;
+                return STATUS_SUCCESS;
+            }
+        }
+
+        return STATUS_UNSUCCESSFUL;
+    }
+    else {
+        return STATUS_UNSUCCESSFUL;
+    }
+}
+
+
+//Thread wait for termination
+STATUS
+SyscallThreadWaitForTermination(
+    IN      UM_HANDLE               ThreadHandle,
+    OUT     STATUS* TerminationStatus
+)
+{
+    PPROCESS process = GetCurrentProcess();
+    if (process == NULL)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+    if (!SUCCEEDED(MmuIsBufferValid(TerminationStatus, sizeof(STATUS), PAGE_RIGHTS_WRITE, process)))
+    {
+        return STATUS_INVALID_PARAMETER2;
+    }
+
+    PTHREAD thread = RetrieveThreadFromHandle(ThreadHandle);
+
+    if (thread == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    ThreadWaitForTermination(thread, TerminationStatus);
+
+    return STATUS_SUCCESS;
+}
+
+////Thread close handle
+STATUS
+SyscallThreadCloseHandle(
+    IN      UM_HANDLE               ThreadHandle
+)
+{
+    // Retrieve the thread from the handle table
+    PTHREAD thread = RetrieveThreadFromHandle(ThreadHandle);
+
+    if (thread == NULL) {
+        return STATUS_INVALID_PARAMETER1; // Return an error status if the handle is invalid
+    }
+
+    // Close the handle associated with the thread
+    ThreadCloseHandle(thread);
+
+    // clear the handle entry in the handle table if needed
+    threadHandleTable[ThreadHandle].threadPtr = NULL;
 
     return STATUS_SUCCESS;
 }

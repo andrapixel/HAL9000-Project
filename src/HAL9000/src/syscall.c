@@ -30,14 +30,13 @@ PROCESS_HANDLE processHandleTable[MAX_PROCESSES];
 // Function to retrieve the corresponding process of a given handle
 PPROCESS RetrieveProcessFromHandle(UM_HANDLE ProcessHandle)
 {
-    if (ProcessHandle = 0 && ProcessHandle <= MAX_PROCESSES) {
+    if (ProcessHandle >= 0 && ProcessHandle <= MAX_PROCESSES) {
         if (processHandleTable[ProcessHandle].processPtr != NULL) {
             return processHandleTable[ProcessHandle].processPtr;
         }
     }
-    else {
-        return NULL;
-    }
+
+    return NULL;
 }
 
 // File handle structure
@@ -56,9 +55,8 @@ PFILE_OBJECT RetrieveFileFromHandle(UM_HANDLE FileHandle)
             return fileHandleTable[FileHandle].filePtr;
         }
     }
-    else {
-        return NULL;
-    }
+
+    return NULL;
 }
 
 //the thread handle structure
@@ -70,13 +68,13 @@ typedef struct _THREAD_HANDLE {
 THREAD_HANDLE threadHandleTable[MAX_THREADS];
 
 //function to retrieve the thread from the handle
-PTHREAD RetrieveThreadFromHandle(UM_HANDLE ThreadHandle) {
+PTHREAD RetrieveThreadFromHandle(UM_HANDLE ThreadHandle) 
+{
     if (ThreadHandle >= 0 && ThreadHandle < MAX_THREADS) {
         return threadHandleTable[ThreadHandle].threadPtr;
     }
-    else {
-        return NULL;
-    }
+    
+    return NULL;
 }
 
 void
@@ -530,11 +528,11 @@ SyscallFileCreate(
 
     // construct full path
     char fullPath[MAX_PATH];
-    if (Path[1] == ":" && Path[2] == '\\') {
+    if (Path[1] == ':' && Path[2] == '\\') {
         strcpy(fullPath, Path);
     }
     else {
-        char* systemDrive = IomuGetSystemPartitionPath();
+        const char* systemDrive = IomuGetSystemPartitionPath();
         sprintf(fullPath, "%s%s", systemDrive, Path);
     }
 
@@ -643,16 +641,16 @@ SyscallFileWrite(
         return STATUS_UNSUCCESSFUL;
     }
 
-    PFILE_OBJECT file = NULL;
-    file = RetrieveFileFromHandle(FileHandle);
-    if (file == NULL) {
-        return STATUS_INVALID_PARAMETER1;
-    }
-
     if (FileHandle == UM_FILE_HANDLE_STDOUT) {
         *BytesWritten = BytesToWrite;
         LOG("[%s]:[%s]\n", ProcessGetName(NULL), Buffer);
         return STATUS_SUCCESS;
+    }
+
+    PFILE_OBJECT file = NULL;
+    file = RetrieveFileFromHandle(FileHandle);
+    if (file == NULL) {
+        return STATUS_INVALID_PARAMETER1;
     }
 
     STATUS status = IoWriteFile(file, BytesToWrite, NULL, Buffer, BytesWritten);
@@ -750,7 +748,7 @@ SyscallThreadCreate(
     PTHREAD newThread = NULL;
     char* threadName = "NewThread";
 
-    status = ThreadCreate(threadName, 1, StartFunction, Context, &newThread);
+    status = ThreadCreateEx(threadName, 1, StartFunction, Context, &newThread, GetCurrentProcess());
 
     if (SUCCEEDED(status) && newThread != NULL) {
         int handleIndex;
